@@ -1,0 +1,20 @@
+# .onedev-buildspec.yml
+pipeline:
+  stages:
+    - name: Test
+      steps:
+        - run: go test -v ./...
+
+    - name: Build
+      steps:
+        - run: go build -o gemma-server .
+
+    - name: Docker Build and Tag
+      steps:
+        - run: |
+            # Extract the short commit hash from Git
+            GIT_HASH=$(git rev-parse --short HEAD) || echo "latest"
+            IMAGE_NAME="gemma-hello-world:${GIT_HASH}"
+
+            echo "Building and tagging image as ${IMAGE_NAME}"
+            docker build -t "${IMAGE_NAME}" .
