@@ -1,20 +1,51 @@
-# .onedev-buildspec.yml
-pipeline:
-  stages:
-    - name: Test
-      steps:
-        - run: go test -v ./...
+jobs:
+  - name: CI
+    steps:
+      - type: CheckoutStep
+        name: checkout
+        cloneCredential:
+          type: DefaultCredential {}
+        withLfs: false
+        withSubmodules: false
+        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
 
-    - name: Build
-      steps:
-        - run: go build -o gemma-server .
+      - type: CommandStep
+        name: test
+        runInContainer: true
+        image: golang:1.22
+        interpreter:
+          type: DefaultInterpreter
+          commands:
+            - go test -v ./...
+        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
 
-    - name: Docker Build and Tag
-      steps:
-        - run: |
-            # Extract the short commit hash from Git
-            GIT_HASH=$(git rev-parse --short HEAD) || echo "latest"
-            IMAGE_NAME="gemma-hello-world:${GIT_HASH}"
+      - type: CommandStep
+        name: build
+        runInContainer: true
+        image: golang:1.22
+        interpreter:
+          type: DefaultInterpreter
+          commands:
+            - go build -o gemma-server .
+        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
 
-            echo "Building and tagging image as ${IMAGE_NAME}"
-            docker build -t "${IMAGE_NAME}" .
+      - type: CommandStep
+        name: docker build
+        runInContainer: true
+        image: docker:24-dind
+        interpreter:
+          type: DefaultInterpreter
+          commands:
+            - |
+              GIT_HASH=$(git rev-parse --short HEAD)
+              IMAGE_TAG="gemma-hello-world:${GIT_HASH}"
+              echo "Building and tagging image as ${IMAGE_TAG}"
+              docker build -t "${IMAGE_TAG}" .
+        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+
+    triggers:
+      - type: BranchUpdateTrigger {}
+    retryCondition: never
+    maxRetries: 3
+    retryDelay: 30
+    timeout: 3600
