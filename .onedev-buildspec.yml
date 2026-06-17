@@ -24,8 +24,8 @@ jobs:
         image: golang:1.22
         interpreter:
           type: DefaultInterpreter
-          commands:
-            - go test -v ./...
+          commands: |
+            go test -v ./...
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
         optional: false
 
@@ -35,8 +35,8 @@ jobs:
         image: golang:1.22
         interpreter:
           type: DefaultInterpreter
-          commands:
-            - go build -o gemma-server .
+          commands: |
+            go build -o gemma-server
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
         optional: false
 
