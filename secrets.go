@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"strings"
 )
 
 // SecretProvider defines the abstraction for retrieving sensitive configuration.
@@ -22,6 +23,30 @@ func (e *EnvSecretProvider) GetSecret(key string) (string, error) {
 		return "", fmt.Errorf("secret %s not found", key)
 	}
 	return val, nil
+}
+
+// FileSecretProvider is the production secret provider that
+// gets the secret from a file, usually a mounted /tmpfs or /dev/shm file
+type FileSecretProvider struct {
+    filePath string
+}
+
+func (f *FileSecretProvider) GetSecret(key string) (string, error) {
+    data, err := os.ReadFile(f.filePath)
+    if err != nil {
+        return "", fmt.Errorf("failed to read secret file: %w", err)
+    }
+
+    // Parses a simple key=value format from the file
+    lines := strings.Split(string(data), "\n")
+    for _, line := range lines {
+        parts := strings.SplitN(line, "=", 2)
+        if len(parts) == 2 && parts[0] == key {
+            return parts[1], nil
+        }
+    }
+
+    return "", fmt.Errorf("key %s not found in %s", key, f.filePath)
 }
 
 // CachedSecretProvider is a Decorator that wraps a SecretProvider

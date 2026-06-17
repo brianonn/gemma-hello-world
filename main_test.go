@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"os"
 	"testing"
 	"time"
 )
@@ -202,5 +203,155 @@ func TestCachedSecretProvider_Decorator(t *testing.T) {
 	}
 	if spy.callCount != 2 {
 		t.Errorf("Expected call count to increment to 2, got %d", spy.callCount)
+	}
+}
+
+func TestFileSecretProvider(t *testing.T) {
+	// Create a temporary file
+	content := "SECRET=my-file-secret\nOTHER=other-string"
+	tmpfile, err := os.CreateTemp("", "secret_test")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+
+	provider := &FileSecretProvider{filePath: tmpfile.Name()}
+
+	// Test finding the secret
+	val, err := provider.GetSecret("SECRET")
+	if err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+	if val != "my-file-secret" {
+		t.Errorf("expected my-file-secret, got %s", val)
+	}
+
+	// Test finding a non-existent key
+	val, err = provider.GetSecret("NON_EXISTENT")
+	if err == nil {
+		t.Error("expected error for non-existent key, but got none")
+	}
+}
+
+func TestCachedFileSecretProvider(t *testing.T) {
+	// Create a temporary file to act as the secret source
+	content := "SECRET=cached-file-secret"
+	tmpfile, err := os.CreateTemp("", "cached_secret_test")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+
+	// Initialize the base provider and wrap it with a cache
+	baseProvider := &FileSecretProvider{filePath: tmpfile.Name()}
+	cacheTTL := 1 * time.Second
+	cachedProvider := NewCachedSecretProvider(baseProvider, cacheTTL)
+
+	// First call (Cache Miss): Should read from the file
+	val1, err := cachedProvider.GetSecret("SECRET")
+	if err != nil {
+		t.Errorf("First call failed: %v", err)
+	}
+	if val1 != "cached-file-secret" {
+		t.Errorf("expected cached-file-secret, got %s", val1)
+	}
+
+	// Second call (Cache Hit): Should read from the in-memory cache
+	val2, err := cachedProvider.GetSecret("SECRET")
+	if err != nil {
+		t.Errorf("Second call failed: %v", err)
+	}
+	if val2 != "cached-file-secret" {
+		t.Errorf("expected cached-file-secret, got %s", val2)
+	}
+
+	// Wait for TTL to expire so we can test a cache miss/refresh
+	time.Sleep(1500 * time.Millisecond)
+
+	// Third call (Cache Expired): Should read from the file again
+	val3, err := cachedProvider.GetSecret("SECRET")
+	if err != nil {
+		t.Errorf("Third call after expiry failed: %v", err)
+	}
+	if val3 != "cached-file-secret" {
+		t.Errorf("expected cached-file-secret after expiry, got %s", val3)
+	}
+}
+
+// SpyFileSecretProvider wraps a FileSecretProvider to track call counts.
+type SpyFileSecretProvider struct {
+	base      *FileSecretProvider
+	callCount int
+}
+
+func (s *SpyFileSecretProvider) GetSecret(key string) (string, error) {
+	s.callCount++
+	return s.base.GetSecret(key)
+}
+
+func TestCachedFileSecretProvider_Decorator(t *testing.T) {
+	// 1. Setup: Create a temporary file with secret content
+	content := "SECRET=cached-file-secret"
+	tmpfile, err := os.CreateTemp("", "cached_secret_test")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write([]byte(content)); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+
+	// 2. Initialize the chain: FileSecretProvider -> Spy -> CachedSecretProvider
+	baseProvider := &FileSecretProvider{filePath: tmpfile.Name()}
+	spy := &SpyFileSecretProvider{base: baseProvider}
+	cacheTTL := 1 * time.Second
+	cachedDecorator := NewCachedSecretProvider(spy, cacheTTL)
+
+	// 3. First call: Should be a Cache Miss (calls the spy and the underlying file provider)
+	val1, err := cachedDecorator.GetSecret("SECRET")
+	if err != nil || val1 != "cached-file-secret" {
+		t.Errorf("First call failed: got %q, err: %v", val1, err)
+	}
+	if spy.callCount != 1 {
+		t.Errorf("Expected 1 call to underlying provider on cache miss, got %d", spy.callCount)
+	}
+
+	// 4. Second call: Should be a Cache Hit (does NOT call the spy or file provider)
+	val2, err := cachedDecorator.GetSecret("SECRET")
+	if err != nil || val2 != "cached-file-secret" {
+		t.Errorf("Second call failed: got %q, err: %v", val2, err)
+	}
+	if spy.callCount != 1 {
+		t.Errorf("Expected call count to remain 1 on cache hit, but it increased to %d", spy.callCount)
+	}
+
+	// 5. Wait for TTL to expire
+	time.Sleep(1500 * time.Millisecond)
+
+	// 6. Third call: Should be a Cache Miss/Refresh (calls the spy again)
+	val3, err := cachedDecorator.GetSecret("SECRET") // Note: I'll ensure it calls GetSecret correctly
+	if err != nil || val3 != "cached-file-secret" {
+		t.Errorf("Third call after expiry failed: got %q, err: %v", val3, err)
+	}
+	if spy.callCount != 2 {
+		t.Errorf("Expected call count to increment to 2 after cache expiry, got %d", spy.callCount)
 	}
 }

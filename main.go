@@ -5,20 +5,22 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
 // Server encapsulates the dependencies for the HTTP server.
 type Server struct {
-	router         *http.ServeMux
-	secretProvider SecretProvider // Dependency Injection via interface
+	router           *http.ServeMux
+	secretProviders []SecretProvider // Dependency Injection via interface
 }
 
-// NewServer accepts a SecretProvider to allow for production vs mock usage.
-func NewServer(sp SecretProvider) *Server {
+// NewServer accepts a list of SecretProviders
+// to allow for Chain of Responsibility in production and mock testing
+func NewServer(providers ...SecretProvider) *Server {
 	s := &Server{
-		router:         http.NewServeMux(),
-		secretProvider: sp,
+		router:          http.NewServeMux(),
+		secretProviders: providers,
 	}
 	s.routes()
 	return s
@@ -37,12 +39,22 @@ func (s *Server) handleHello(w http.ResponseWriter, r *http.Request) {
 	timestamp := time.Now().Format(time.RFC3339)
 	response := fmt.Sprintf("hello world %s", timestamp)
 
-	// Use the injected provider instead of os.LookupEnv directly
-	if secret, err := s.secretProvider.GetSecret("SECRET"); err == nil && secret != "" {
-		response = fmt.Sprintf("%s secret: %s", response, secret)
-	}
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+    // Iterate through providers in the order they were passed to NewServer
+    var foundSecret string
+    for _, provider := range s.secretProviders {
+        secret, err := provider.GetSecret("SECRET")
+        if err == nil && secret != "" {
+            foundSecret = secret
+            break // Stop at the first successful retrieval
+        }
+    }
+
+    if foundSecret != "" {
+        response = fmt.Sprintf("%s secret: %s", response, foundSecret)
+    }
+
+    w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(response)); err != nil {
 		log.Printf("failed to write response: %v", err)
@@ -54,15 +66,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// The Base implementation (Production)
-	baseProvider := &EnvSecretProvider{}
+	// Define our prioritized chain of providers
+    var providers []SecretProvider
+    const cacheTimeout = 5*time.Minute
 
-	// The Decorator: Wrap the base provider with caching capabilities
-	// Now, calls to GetSecret will only hit the OS environment if the cache is empty/expired.
-	cachedProvider := NewCachedSecretProvider(baseProvider, 5*time.Minute)
+    // 1. High Priority: Check File-based (tmpfs) first
+    if filePath := os.Getenv("SECRET_FILE_PATH"); filePath != "" {
+        log.Printf("Registering FileSecretProvider: %s", filePath)
+        // The Decorator: Wrap the provider with caching capabilities
+        providers = append(providers, NewCachedSecretProvider(&FileSecretProvider{filePath: filePath}, cacheTimeout))
+    }
 
-	// Inject the decorated provider into the server
-	srv := NewServer(cachedProvider)
+    // 2. Low Priority: Fallback to Environment Variables
+    log.Println("Registering EnvSecretProvider")
+    providers = append(providers, NewCachedSecretProvider(&EnvSecretProvider{}, cacheTimeout))
+
+	// Inject the providers into the server
+	srv := NewServer(providers...)
 
 	addr := ":8080"
 	httpSrv := &http.Server{
