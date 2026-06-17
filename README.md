@@ -5,6 +5,7 @@ A production-grade implementation of a high-performance HTTP service in Go. This
 ## Key Features
 
 * **Secure Secret Injection**: Uses a Bash entrypoint to fetch secrets from HashiCorp Vault at container startup, injecting them into the process environment without leaving traces in the image layers.
+* **Multi-Source Secret Management**: Supports retrieval from environment variables, filesystem mounts (e.g., `/tmpfs` or Kubernetes Secrets), and provides a transparent caching layer for all sources.
 * **Dependency Injection (DI)**: The `Server` is decoupled from the OS via the `SecretProvider` interface, allowing for seamless switching between `EnvSecretProvider` (Production) and `MockSecretProvider` (Testing).
 
 * **Decorator Pattern**: Implements a transparent caching layer (`CachedSecretProvider`) that wraps any `SecretProvider`. This allows adding TTL-based in-memory caching without modifying the underlying business logic.
@@ -35,6 +36,8 @@ The test suite covers:
 3. **Error handling**: Simulating provider failures to ensure the server stays operational and does not leak error strings.
 4. **Stress testing**: Validating memory stability with extremely large (1MB+) environment variables.
 5. **Decorator Logic**: Verifying that the cache correctly reduces calls to the underlying provider and respects TTL expiration.
+6. **Filesystem Secrets**: Validating that `FileSecretProvider` correctly parses key-value pairs from mounted files and integrates seamlessly with the caching layer.
+
 
 Run tests using:
 ```bash
