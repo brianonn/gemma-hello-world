@@ -22,7 +22,7 @@ jobs:
       - type: CommandStep
         name: test
         runInContainer: true
-        image: golang:1.22
+        image: golang:1.24
         interpreter:
           type: DefaultInterpreter
           commands: |
@@ -33,7 +33,7 @@ jobs:
       - type: CommandStep
         name: build
         runInContainer: true
-        image: golang:1.22
+        image: golang:1.24
         interpreter:
           type: DefaultInterpreter
           commands: |
