@@ -4,6 +4,7 @@ jobs:
     jobExecutor: remote-docker-executor
     triggers:
       - type: BranchUpdateTrigger
+        userMatch: anyone
     retryCondition: never
     maxRetries: 3
     retryDelay: 30
