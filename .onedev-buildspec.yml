@@ -1,14 +1,22 @@
 version: 46
 jobs:
   - name: CI
+    jobExecutor: remote-docker-executor
+    triggers:
+      - type: BranchUpdateTrigger
+    retryCondition: never
+    maxRetries: 3
+    retryDelay: 30
+    timeout: 3600
     steps:
       - type: CheckoutStep
         name: checkout
         cloneCredential:
-          type: DefaultCredential {}
+          type: DefaultCredential
         withLfs: false
         withSubmodules: false
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        optional: false
 
       - type: CommandStep
         name: test
@@ -19,6 +27,7 @@ jobs:
           commands:
             - go test -v ./...
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        optional: false
 
       - type: CommandStep
         name: build
@@ -29,6 +38,7 @@ jobs:
           commands:
             - go build -o gemma-server .
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        optional: false
 
       - type: CommandStep
         name: docker build
@@ -38,15 +48,9 @@ jobs:
           type: DefaultInterpreter
           commands:
             - |
-              GIT_HASH=$(git rev-parse --short HEAD)
+              GIT_HASH=$(git rev-parse --short HEAD) || echo "000000"
               IMAGE_TAG="gemma-hello-world:${GIT_HASH}"
               echo "Building and tagging image as ${IMAGE_TAG}"
               docker build -t "${IMAGE_TAG}" .
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
-
-    triggers:
-      - type: BranchUpdateTrigger {}
-    retryCondition: never
-    maxRetries: 3
-    retryDelay: 30
-    timeout: 3600
+        optional: false
