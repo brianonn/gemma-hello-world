@@ -46,11 +46,10 @@ jobs:
         image: docker:24-dind
         interpreter:
           type: DefaultInterpreter
-          commands:
-            - |
-              GIT_HASH=$(git rev-parse --short HEAD) || echo "000000"
-              IMAGE_TAG="gemma-hello-world:${GIT_HASH}"
-              echo "Building and tagging image as ${IMAGE_TAG}"
-              docker build -t "${IMAGE_TAG}" .
+          commands: |
+            GIT_HASH=$(git rev-parse --short HEAD) || echo "000000"
+            IMAGE_TAG="gemma-hello-world:${GIT_HASH}"
+            echo "Building and tagging image as ${IMAGE_TAG}"
+            docker build -t "${IMAGE_TAG}" .
         condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
         optional: false
