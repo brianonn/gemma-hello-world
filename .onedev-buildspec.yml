@@ -15,7 +15,7 @@ jobs:
           type: DefaultCredential
         withLfs: false
         withSubmodules: false
-        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        condition: SUCCESSFUL
         optional: false
 
       - type: CommandStep
@@ -26,7 +26,7 @@ jobs:
           type: DefaultInterpreter
           commands: |
             go test -v ./...
-        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        condition: SUCCESSFUL
         optional: false
 
       - type: CommandStep
@@ -37,7 +37,7 @@ jobs:
           type: DefaultInterpreter
           commands: |
             go build -o gemma-server
-        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        condition: SUCCESSFUL
         optional: false
 
       - type: CommandStep
@@ -51,5 +51,5 @@ jobs:
             IMAGE_TAG="gemma-hello-world:${GIT_HASH}"
             echo "Building and tagging image as ${IMAGE_TAG}"
             docker build -t "${IMAGE_TAG}" .
-        condition: ALL_PREVIOUS_STEPS_WERE_SUCCESSFUL
+        condition: SUCCESSFUL
         optional: false
