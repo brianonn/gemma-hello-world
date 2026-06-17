@@ -1,3 +1,4 @@
+version: 46
 jobs:
   - name: CI
     steps:
