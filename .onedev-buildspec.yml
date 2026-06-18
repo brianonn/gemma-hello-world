@@ -1,56 +1,44 @@
-version: 46
+version: 49
+jobExecutor: remote-docker-executor
+
 jobs:
-  - name: CI
-    jobExecutor: remote-docker-executor
-    triggers:
-      - type: BranchUpdateTrigger
-        userMatch: anyone
-    retryCondition: never
-    maxRetries: 3
-    retryDelay: 30
-    timeout: 3600
+  main_job:
     steps:
-      - type: CheckoutStep
-        name: checkout
-        cloneCredential:
-          type: DefaultCredential
-        withLfs: false
-        withSubmodules: false
-        condition: SUCCESSFUL
-        optional: false
+      # Use OneDev's built-in git checkout step
+      - name: Checkout
+        type: git-checkout
 
-      - type: CommandStep
-        name: test
-        runInContainer: true
-        image: golang:1.24
-        interpreter:
-          type: DefaultInterpreter
-          commands: |
-            go test -v ./...
-        condition: SUCCESSFUL
-        optional: false
+      # Leverage OneDev's Go test step for automated testing with dependency management
+      - name: Test
+        type: go-test
+        image: golang:1.24-alpine
 
-      - type: CommandStep
-        name: build
-        runInContainer: true
-        image: golang:1.24
-        interpreter:
-          type: DefaultInterpreter
-          commands: |
-            go build -o gemma-server
-        condition: SUCCESSFUL
-        optional: false
+      # Use OneDev's Go build step for compilation
+      - name: Build
+        type: go-build
+        image: golang:1.24-alpine
+        output: server
 
-      - type: CommandStep
-        name: docker build
-        runInContainer: true
-        image: docker:24-dind
-        interpreter:
-          type: DefaultInterpreter
-          commands: |
-            GIT_HASH=$(git rev-parse --short HEAD) || echo "000000"
-            IMAGE_TAG="gemma-hello-world:${GIT_HASH}"
-            echo "Building and tagging image as ${IMAGE_TAG}"
-            docker build -t "${IMAGE_TAG}" .
-        condition: SUCCESSFUL
-        optional: false
+      # Use OneDev's Docker build step with smart tagging
+      - name: Docker Build
+        type: docker-build
+        image: docker:dind
+        tags:
+          - gemma-hello-world:${git_short_hash}
+
+    # Utilize OneDev's caching to speed up dependency downloads
+    cache:
+      go_mod:
+        path: go.mod
+        key: go-mod-${{ git_commit }}
+
+    # Enable artifact passing between jobs for multi-stage workflows
+    artifacts:
+      server_binary:
+        - server
+
+    # Apply conditional execution based on branch for selective builds
+    on:
+      branch:
+        - main
+        - develop
