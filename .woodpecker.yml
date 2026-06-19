@@ -1,0 +1,41 @@
+kind: pipeline
+type: docker
+
+name: default
+
+steps:
+  - name: test
+    image: golang:1.24-alpine
+    commands:
+      - echo "Running Go tests..."
+      - go test ./...
+
+  - name: build
+    image: golang:1.24-alpine
+    commands:
+      - echo "Building application..."
+      - go build -o server .
+    depends_on:
+      - test
+
+  - name: docker-build
+    image: plugins/docker
+    settings:
+      repo: ${CI_REPO}
+      tags:
+        - gemma-hello-world:${CI_COMMIT_SHA}
+        - gemma-hello-world:latest
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+    depends_on:
+      - build
+    when:
+      branch: main
+
+trigger:
+  - push:
+      branch: main
+  - pull_request:
+      branch: main
